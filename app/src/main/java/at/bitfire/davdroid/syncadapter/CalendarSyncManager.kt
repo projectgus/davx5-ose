@@ -10,8 +10,10 @@ import android.content.SyncResult
 import android.os.Bundle
 import at.bitfire.dav4jvm.DavCalendar
 import at.bitfire.dav4jvm.DavResponseCallback
+import at.bitfire.dav4jvm.Error
 import at.bitfire.dav4jvm.Response
 import at.bitfire.dav4jvm.exception.DavException
+import at.bitfire.dav4jvm.exception.ForbiddenException
 import at.bitfire.dav4jvm.property.*
 import at.bitfire.davdroid.DavUtils
 import at.bitfire.davdroid.HttpClient
@@ -32,6 +34,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.apache.commons.io.FileUtils
+import org.apache.commons.lang3.exception.ContextedException
 import java.io.ByteArrayOutputStream
 import java.io.Reader
 import java.io.StringReader
@@ -187,7 +190,21 @@ class CalendarSyncManager(
             Logger.log.info("Received VCALENDAR with not exactly one VEVENT with UID and without RECURRENCE-ID; ignoring $fileName")
     }
 
+    override fun uploadDirty(local: LocalEvent) {
+        try {
+            super.uploadDirty(local)
+        } catch (e: ContextedException) {
+            if (e.cause is ForbiddenException && local.calendar.isReadOnly) {
+                // HTTP 403 Forbidden updating a read-only calendar
+                //
+                // This may happen if syncing a VALARM to a read-only calendar item (depending on server support for this)
+                Logger.log.log(Level.INFO, "Couldn't update read-only calendar, ignoring", e)
+            } else
+                throw e
+        }
+    }
+
+
     override fun notifyInvalidResourceTitle(): String =
             context.getString(R.string.sync_invalid_event)
-
 }
